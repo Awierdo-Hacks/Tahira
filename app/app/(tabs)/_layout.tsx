@@ -53,6 +53,13 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="country"
+        options={{
+          title: 'Country of origin',
+          tabBarIcon: ({ color }) => <TabBarIcon name="map" color={color} />,
+        }}
+      />
     </Tabs>
   );
 }
