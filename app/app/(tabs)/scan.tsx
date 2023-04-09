@@ -1,15 +1,24 @@
-import { Button, ScrollView, StyleSheet, TextInput } from 'react-native';
+import {
+  Button,
+  FlatList,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+} from 'react-native';
 import { useEffect, useState } from 'react';
 
-import EditScreenInfo from '../../components/EditScreenInfo';
 import { Text, View } from '../../components/Themed';
-import { BarCodeScanner } from 'expo-barcode-scanner';
-import { ECODES } from '../../utils/ecodes';
+import { BarCodeEvent, BarCodeScanner } from 'expo-barcode-scanner';
+import { Status, checkIfHalal } from '../../utils/checkHalal';
+import { useProduct } from '../../hooks/useProduct';
 
 export default function TabScanScreen() {
   const [hasPermission, setHasPermission] = useState<null | boolean>(null);
   const [scanned, setScanned] = useState(false);
-  const [productData, setProductData] = useState<any>({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>();
+  const [backgroundColor, setBackgroundColor] = useState<string>();
+  const product = useProduct();
 
   useEffect(() => {
     const getBarcodeScannerPermissions = async () => {
@@ -20,41 +29,49 @@ export default function TabScanScreen() {
     getBarcodeScannerPermissions();
   }, []);
 
-  const handleBarCodeScanned = ({ type, data }: any) => {
-    setScanned(true);
-    fetch(`https://world.openfoodfacts.org/api/v0/product/${data}.json`)
-      .then((res) => res.json())
-      .then((data) => setProductData(data));
-  };
-
-  const checkIfHalal = (ecodes: string[]): [string, string | undefined] => {
-    let foundmushbooh = undefined;
-    for (const ecode of ecodes) {
-      const foundECode = ECODES.filter(
-        (e) => e.ecode.slice(1) == ecode.slice(ecode.indexOf(':') + 2)
-      );
-      if (foundECode.length == 1) {
-        if (foundECode[0].status == 'mushbooh')
-          foundmushbooh = foundECode[0].ecode;
-        if (foundECode[0].status == 'haram')
-          return ['haram', foundECode[0].ecode];
-      }
+  useEffect(() => {
+    if (product?.status == undefined) {
+      setBackgroundColor(undefined);
+      return;
     }
-    if (foundmushbooh) return ['mushbooh', foundmushbooh];
-    return ['halal', undefined];
+    if (product.status.status == 'Halal') setBackgroundColor('green');
+    else if (product.status.status == 'Haram') setBackgroundColor('red');
+    else if (product.status.status == 'Mushbooh') setBackgroundColor('orange');
+    else setBackgroundColor(undefined);
+  }, [product.status]);
+
+  const handleBarCodeScanned = ({ type, data }: BarCodeEvent) => {
+    console.log(type, data);
+    setScanned(true);
+    setError(undefined);
+    setLoading(true);
+    product.set(data).catch((err) => setError(err));
+    setLoading(false);
   };
 
   if (hasPermission === null) {
-    return <Text>Requesting for camera permission</Text>;
+    return null;
   }
   if (hasPermission === false) {
-    return <Text>No access to camera</Text>;
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>No access to camera</Text>;
+      </View>
+    );
   }
 
   return (
-    <View style={{ ...styles.container }}>
+    <View
+      style={{
+        ...styles.container,
+        backgroundColor,
+      }}
+    >
       <View
-        style={styles.separator}
+        style={{
+          ...styles.separator,
+          backgroundColor,
+        }}
         lightColor="#eee"
         darkColor="rgba(255,255,255,0.1)"
       />
@@ -67,31 +84,84 @@ export default function TabScanScreen() {
         </>
       ) : (
         <>
-          <Button
-            title={'Tap to Scan Again'}
-            onPress={() => setScanned(false)}
-          />
-          <ScrollView>
-            {/* <Text>{JSON.stringify(productData, null, 4)}</Text> */}
-            {productData.status_verbose !== 'product found' ? (
-              <Text>Product Not Found</Text>
-            ) : (
-              <>
-                <Text>
-                  Additives: {productData.product.additives_tags.toString()}
-                </Text>
-                <Text>
-                  {checkIfHalal(productData.product.additives_tags)[0]}{' '}
-                  {checkIfHalal(productData.product.additives_tags)[1] ? (
-                    <>
-                      because of{' '}
-                      {checkIfHalal(productData.product.additives_tags)[1]}
-                    </>
-                  ) : null}
-                </Text>
-              </>
-            )}
-          </ScrollView>
+          {loading ? (
+            <Text>Loading</Text>
+          ) : (
+            <>
+              <View
+                style={{
+                  ...styles.container,
+                  backgroundColor,
+                }}
+              >
+                {error != undefined ? (
+                  <Text>Error: {error.toString()}</Text>
+                ) : (
+                  <>
+                    {!product.found ? (
+                      <>
+                        <Text style={styles.title}>Product Not Found</Text>
+                        <Text>ID: {product.id}</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text
+                          style={{
+                            ...styles.title,
+                            fontSize: 50,
+                            marginHorizontal: 50,
+                          }}
+                        >
+                          {product.status?.status ?? 'Halal'}
+                        </Text>
+                        {product.status?.becauseOf != undefined ? (
+                          <Text style={{ fontSize: 20 }}>
+                            {' '}
+                            because of {product.status.becauseOf}
+                          </Text>
+                        ) : null}
+                        <View
+                          style={{
+                            ...styles.separator,
+                            backgroundColor,
+                          }}
+                          lightColor="#eee"
+                          darkColor="rgba(255,255,255,0.1)"
+                        />
+                        {product.additives.length > 0 ? (
+                          <>
+                            <Text style={styles.title}>Additives</Text>
+                            <FlatList
+                              data={product.additives}
+                              renderItem={({ item }) => <Text>{item}</Text>}
+                            />
+                          </>
+                        ) : (
+                          <Text>No Additives</Text>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+              </View>
+              <Button
+                title={'Tap to Scan Again'}
+                onPress={() => {
+                  setScanned(false);
+                  setBackgroundColor(undefined);
+                }}
+              />
+              <View
+                style={{
+                  ...styles.separator,
+                  marginVertical: 10,
+                  backgroundColor,
+                }}
+                lightColor="#eee"
+                darkColor="rgba(255,255,255,0.1)"
+              />
+            </>
+          )}
         </>
       )}
     </View>
