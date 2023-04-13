@@ -54,6 +54,13 @@ export default function TabCountryScreen() {
           <BarCodeScanner
             onBarCodeScanned={scanned ? undefined : handleBarCodeScanned}
             style={StyleSheet.absoluteFillObject}
+            barCodeTypes={[
+              BarCodeScanner.Constants.BarCodeType.ean13,
+              BarCodeScanner.Constants.BarCodeType.ean8,
+              BarCodeScanner.Constants.BarCodeType.upc_a,
+              BarCodeScanner.Constants.BarCodeType.upc_e,
+              BarCodeScanner.Constants.BarCodeType.upc_ean,
+            ]}
           />
         </>
       ) : (
